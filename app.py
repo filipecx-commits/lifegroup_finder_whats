@@ -9,12 +9,13 @@ from datetime import datetime
 import urllib.parse
 
 # --- CONFIGURAÇÃO DE INTEGRAÇÃO (Backend) ---
-# Seu Link do Google Apps Script
+# Seu Link do Google Apps Script (Webhook)
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyonfmXBRHuokBbHHtt3lmtgvtwICcomgOJh3pz_ToUDUZRjeYNxb29b5sRRhztc54-/exec"
 
 # --- CONFIGURAÇÃO DE TESTE ---
+# True = Redireciona tudo para você. False = Usa os dados reais dos líderes.
 MODO_TESTE = True 
-ZAP_TESTE = "5519992071423" 
+ZAP_TESTE = "5519992071423" # Seu número para testes (CallMeBot)
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 URL_CSV = "Cadastro dos Lifegroups.csv"
@@ -42,8 +43,8 @@ st.markdown("""
         background-color: #f0f2f6; 
         color: #1C355E; 
         font-weight: bold;
-        padding: 10px 15px; /* Reduzi o padding lateral */
-        font-size: 14px; /* Fonte levemente menor para caber */
+        padding: 10px 15px;
+        font-size: 14px;
     }
     .stTabs [aria-selected="true"] { 
         background-color: #1C355E; 
@@ -63,10 +64,6 @@ def extrair_zap(texto):
     return None
 
 def limpar_endereco_visual(location):
-    """
-    Função melhorada para garantir que sempre mostre Rua e Bairro,
-    mesmo que o geocoder devolva os dados desorganizados.
-    """
     try:
         end = location.raw.get('address', {})
         rua = end.get('road', '')
@@ -80,20 +77,15 @@ def limpar_endereco_visual(location):
         if bairro: partes.append(bairro)
         
         texto_final = ", ".join(partes)
-        
-        if cidade: 
-            texto_final += f" - {cidade}"
+        if cidade: texto_final += f" - {cidade}"
             
-        # Se ficou muito curto (tipo só "681"), pega o endereço bruto (primeiras 2 partes)
         if len(texto_final) < 5 or not rua:
             bruto = location.address.split(',')
-            if len(bruto) >= 2:
-                return f"{bruto[0]}, {bruto[1]}" # Pega Rua e Bairro/Cidade do bruto
-            return location.address # Pega tudo se falhar
+            if len(bruto) >= 2: return f"{bruto[0]}, {bruto[1]}"
+            return location.address
             
         return texto_final
     except:
-        # Fallback total
         return location.address.split(',')[0]
 
 def enviar_para_webhook(dados):
@@ -123,7 +115,7 @@ def carregar_dados():
         df = pd.read_csv(URL_CSV)
         df.columns = df.columns.str.strip()
         df = df.dropna(subset=['Nome do Life'])
-        geolocator = Nominatim(user_agent="app_paz_v5_fix")
+        geolocator = Nominatim(user_agent="app_paz_v6_final")
         latitudes = []
         longitudes = []
         for endereco in df['Endereço']:
@@ -147,7 +139,7 @@ def carregar_dados():
         return pd.DataFrame()
 
 def obter_lat_lon_usuario(endereco):
-    geolocator = Nominatim(user_agent="app_paz_user_v5")
+    geolocator = Nominatim(user_agent="app_paz_user_v6")
     try:
         query = f"{endereco}, São Paulo, Brasil"
         loc = geolocator.geocode(query)
@@ -183,7 +175,7 @@ def exibir_cartoes(dataframe, nome_user, zap_user, is_online=False):
             
             with c2:
                 if tel_lider:
-                    # Botão 1: Webhook
+                    # Botão 1: Webhook (CallMeBot via Google)
                     btn_key = f"btn_auto_{index}"
                     
                     if st.button("🚀 Quero Participar", key=btn_key):
@@ -204,7 +196,7 @@ def exibir_cartoes(dataframe, nome_user, zap_user, is_online=False):
                                     st.success("✅ Enviado! Líder avisado.")
                                     st.balloons()
                                     if MODO_TESTE:
-                                        st.caption("ℹ️ Modo Teste: E-mail enviado para filipecx@gmail.com")
+                                        st.caption("ℹ️ Modo Teste: Msg enviada via CallMeBot para Admin")
                                 else:
                                     st.error(f"Falha: {info}")
                                     st.code(info)
@@ -228,8 +220,9 @@ try: st.image("logo_menor.png", width=150)
 except: pass
 
 st.title("Encontre seu LifeGroup")
-if MODO_TESTE: st.warning("⚠️ MODO DE TESTE: Msgs para Filipe")
+if MODO_TESTE: st.warning("⚠️ MODO DE TESTE ATIVO")
 
+# --- MEMÓRIA DE SESSÃO ---
 if 'buscou' not in st.session_state:
     st.session_state.buscou = False
 if 'resultados' not in st.session_state:
@@ -313,7 +306,6 @@ if st.session_state.buscou and st.session_state.lat_user:
     df_o = st.session_state.get('df_online', pd.DataFrame())
     
     if not df_p.empty and not df_o.empty:
-        # TÍTULOS DE ABAS ENCURTADOS PARA NÃO CORTAR
         t1, t2 = st.tabs(["📍 Presencial", "💻 Online"])
         with t1:
             exibir_cartoes(df_p.head(3), nome_atual, zap_atual, False)
